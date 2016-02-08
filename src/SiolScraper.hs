@@ -1,0 +1,99 @@
+-----------------------------------------------------------------------------
+--
+-- Module      :  SiolScraper
+-- Copyright   :
+-- License     :  AllRightsReserved
+--
+-- Maintainer  :
+-- Stability   :
+-- Portability :
+--
+-- |
+--
+-----------------------------------------------------------------------------
+
+module SiolScraper (
+    main
+) where
+
+import           Control.Monad
+import qualified Data.List
+import qualified Data.Map          as Map
+import           Data.Time
+import qualified Data.Time.Format
+import           System.Locale
+import           Text.HandsomeSoup
+import           Text.XML.HXT.Core
+import Control.Concurrent.Timer
+import Control.Concurrent.Suspend
+import Data.Acid
+
+import Control.Monad.State                   ( get, put )
+import Control.Monad.Reader                  ( ask )
+import Control.Applicative                   ( (<$>) )
+import System.Environment                    ( getArgs )
+import Data.SafeCopy
+import Scraper 
+import Text.Printf
+import Data.List (intercalate)
+import Data.Tree.NTree.TypeDefs
+
+baseUrl = "http://www.siol.net/tv-spored.aspx"
+queryString = "?ch=%s&p1=%d&p3=0&p4=0"
+
+buildUrl :: Program -> Int -> String
+buildUrl program dayOffset =
+    let programString = intercalate "+" $ words program
+        offsetParam = dayOffset + 1
+    in baseUrl ++ printf queryString programString offsetParam  
+
+scrapeTime :: (ArrowXml a) => a XmlTree String
+scrapeTime = css "span.i3" >>> (deep getText)
+
+scrapeTitleAndLink :: (ArrowXml a) => a XmlTree (String, String)
+scrapeTitleAndLink = css "span.i5" >>> ((deep getText) &&&
+                                    ((css "a" ! "href")))
+
+--scrapeDescription :: IOSArrow XmlTree (NTree XNode) -> [String]
+--scrapeDescription :: IOSLA (XIOState ()) XmlTree (Data.Tree.NTree.TypeDefs.NTree XNode) -> IO([String])
+scrapeDescription doc = do
+    descs <- runX $ doc >>> css "article#spored" >>> css "p"  /> getText
+    return $ tail descs -- don't take head, which is date
+
+getEntries :: Program -> Int -> IO ([Entry])
+getEntries program dayOffset = do
+    let doc = fromUrl $ buildUrl program dayOffset
+    date <- runX $ doc >>> css "article" >>> css "p.sct" /> getText
+    entriesRaw <- runX $ doc >>> css "div.def" >>> (scrapeTime &&& scrapeTitleAndLink)
+    let entries = map (\(time, (title, eId)) -> Entry { time = readTime defaultTimeLocale "%H:%M, %d. %m. %Y" (time ++ (head date))
+                                                      , eId=eId
+                                                      , title=title
+                                                      })
+                      entriesRaw
+    return entries
+
+getDescriptions :: [Entry] -> IO (Descriptions)
+getDescriptions entries = do
+    descs <- mapM (\entry -> do
+                let doc = fromUrl $ baseUrl ++ (eId entry)
+                scrapeDescription doc)
+            entries
+    return $ Map.fromList $ zip (map eId entries) descs
+
+getNew :: IO ()
+getNew = do
+    entries <- getEntries "TV SLO 1" 1
+    --descriptions <- getDescriptions baseUrl [(head entries)]
+    mapM_ (putStrLn . show) [(head entries)]
+    --putStrLn $ show descriptions
+
+main :: IO ()
+main = do
+    ---timer <- repeatedTimer getNew (sDelay 1)
+    timer <- repeatedTimer getNew (sDelay 1)
+    suspend (sDelay 15)
+    stopTimer timer
+    putStrLn "finished"
+    ---return ()
+
+

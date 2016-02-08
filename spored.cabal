@@ -1,0 +1,32 @@
+name: spored
+version: 0.0.1
+cabal-version: >=1.2
+build-type: Simple
+license: AllRightsReserved
+license-file: ""
+synopsis: Spored
+description:  
+data-dir: ""
+ 
+executable spored
+    build-depends: HandsomeSoup -any, QuickCheck -any, acid-state -any,
+                   base -any, containers -any, hxt -any, mtl -any, old-locale -any,
+                   safecopy -any, suspend -any, template-haskell -any, time -any,
+                   timers -any
+    main-is: Main.hs
+    buildable: True
+    extensions: TemplateHaskell
+    hs-source-dirs: src
+    other-modules: SiolScraper
+ 
+test-suite test-spored
+    build-depends: HandsomeSoup -any, QuickCheck -any, acid-state -any,
+                   base -any, containers -any, hxt -any, mtl -any, old-locale -any,
+                   safecopy -any, suspend -any, template-haskell -any, time -any,
+                   timers -any
+    type: exitcode-stdio-1.0
+    main-is: Main.hs
+    buildable: True
+    cpp-options: -DMAIN_FUNCTION=testMain
+    extensions: TemplateHaskell
+    hs-source-dirs: src
